@@ -31,6 +31,7 @@ Included:
 - Theory Mode: user supplies theory/question → system aggregates supporting/contradicting evidence.
 - Sparse result fallback: suggest related theories OR trigger deeper ingestion cycle.
 - Single URL analysis (paper PDF or repo) on demand.
+- Interactive cluster visualization (2D semantic projection with zoom/pan/select) enabling discovery of clusters and individual papers/repositories via spatial layout.
 
 Deferred / Stretch (Not MVP):
 - Alerting / subscriptions.
@@ -38,7 +39,7 @@ Deferred / Stretch (Not MVP):
 - Time trend visualizations.
 - Export (CSV/JSON datasets).
 - Interactive embedding playground.
-- Advanced UI visual graph (initial: simple cluster facets only).
+- Advanced multi-layer graph analytics (beyond base interactive cluster map added to MVP) (e.g., dynamic force simulation of theory edges, cross-layer overlays).
 
 ## 6. Non-Goals (MVP)
 - Full PDF OCR for scanned documents.
@@ -82,7 +83,11 @@ Storage Implementation:
 Embedding Model: OpenAI `text-embedding-3-large` (fallback: `text-embedding-3-small` if cost override).  
 Similarity Score: 0.55 * cosine + 0.20 * topical overlap Jaccard + 0.15 * recency decay + 0.10 * interestingness normalized.  
 Clustering (MVP): Periodic (every 4 hours) mini-batch HDBSCAN OR (simpler fallback) k-means (k adaptive via sqrt(n/2)).  
-Store cluster labels; expose cluster facet in search.
+Store cluster labels; expose:
+1) Cluster facet in search.
+2) Cluster spatial coordinates (projection) for visualization (UMAP fallback to PCA if < threshold or UMAP unavailable).  
+Projection Refresh Policy: Recompute embedding projection after each clustering job (or if item count delta > 10%). Cache coordinates to avoid jitter (stable sort by id before projection).  
+Coordinate Storage: Persist in TinyDB per item `{projection: {x: float, y: float, version}}` with version tied to clustering batch id.
 
 ## 11. LLM Enrichment
 Pipeline Steps Per Item:
@@ -113,6 +118,7 @@ Pages:
 - Item Detail: enriched metadata, scores, similar items panel.
 - Theory Explorer: input box → support vs contradict table + suggestions.
 - Admin/Settings: toggle ingestion, adjust polling interval, cost dashboard.  
+ - Cluster Map: interactive semantic map (pan/zoom, lasso select, hover detail, cluster density coloring).  
 UI Stack: Vite + React + Tailwind (if allowed) or minimal custom CSS; component-first design for future expansion.
 
 ## 15. API & Backend Outline
@@ -149,6 +155,8 @@ UI Stack: Vite + React + Tailwind (if allowed) or minimal custom CSS; component-
 | Rate limits (GitHub/arXiv) | Ingestion stalls | Low-Med | Backoff + persist last cursor + jitter intervals |
 | Hallucinated findings | Misinterpretation | Medium | Restrictive prompt + require source snippet grounding |
 | Disk growth (PDFs/repos) | Resource pressure | Low | Configurable retention policy + periodic prune |
+| Projection instability (layout shifts) | User distrust of map | Medium | Stable seeding, cache coords, only reproject on scheduled cluster jobs |
+| Large point overdraw in canvas/SVG | Performance degradation | Medium | Use WebGL / canvas layer & level-of-detail aggregation (cluster heat tiles) |
 
 ## 19. Success Metrics (Initial)
 - M1: ≥ 2,000 enriched items discoverable with < 300 ms median search response.

@@ -30,6 +30,7 @@ In Scope (MVP):
 - Single URL analysis (paper PDF or repo) with immediate enrichment.
 - Sparse result fallback: suggest related theories OR trigger targeted ingestion (controlled).
 - Dark-mode first web UI (React + Vite + Tailwind if allowed).
+ - Interactive cluster visualization (semantic 2D projection with zoom/pan, hover detail, click to open item, cluster density shading, lasso multi-select to filter search).
 
 Out of Scope (MVP):
 - User accounts / personalization.
@@ -37,7 +38,7 @@ Out of Scope (MVP):
 - Alerting / notifications.
 - External DB (remain on TinyDB + local files).
 - Lexical fallback index (no fuzzy search beyond simple filtering).
-- Advanced graph visualization (only cluster facets + similarity list).
+- Advanced multi-layer theory + similarity force-directed overlays (beyond base cluster map), live physics manipulation, temporal playback.
 
 Future / Stretch Candidates:
 - Subscription alerting.
@@ -72,7 +73,9 @@ FR-ENR-6: Re-processing guard prevents duplicate enrichment unless forced.
 FR-GRAPH-1: System maintains similarity edges for top N (config, default 15) nearest neighbor items per node above cosine threshold.  
 FR-GRAPH-2: Supports PAPER_IMPL_BY_REPO edge inference (heuristic: repository references arXiv ID or >2 distinctive keywords).  
 FR-GRAPH-3: Clustering job runs every 4 hours.  
-FR-GRAPH-4: Cluster assignments stored and exposed via search facets.
+FR-GRAPH-4: Cluster assignments stored and exposed via search facets.  
+FR-GRAPH-5: Each clustering cycle computes or refreshes 2D projection coordinates (UMAP preferred; PCA fallback) persisted per item with projection version.  
+FR-GRAPH-6: Projection jitter minimized by deterministic item ordering + fixed random seed.
 
 ### 5.4 Theory Mode
 FR-THY-1: User submits a theory/question string.  
@@ -87,12 +90,16 @@ FR-SRCH-2: Ranking formula: weighted composite (cosine + tag overlap + recency +
 FR-SRCH-3: Response includes pagination metadata.  
 FR-SRCH-4: Similar items (at least top 5) included in detail view payload.  
 FR-SRCH-5: URL analysis endpoint accepts paper PDF link or GitHub repo URL; returns enriched item + similar results.
+FR-SRCH-6: Cluster map endpoint exposes: list of items (id, type, cluster_id, x, y, scores.relevance, scores.interesting, top tag).  
+FR-SRCH-7: Lasso selection payload (front-end only) translates to filter parameters for search results view.  
+FR-SRCH-8: Hover detail endpoint (or reuse item detail minimal) returns condensed fields (#requests optimized by batching IDs within animation frame).
 
 ### 5.6 Administration
 FR-ADM-1: Endpoint to pause/resume ingestion loops.  
 FR-ADM-2: Endpoint to trigger on-demand re-cluster.  
 FR-ADM-3: Endpoint to force re-enrichment of an item (for prompt iteration).  
 FR-ADM-4: Configuration values (intervals, thresholds) readable via API; mutable only if flagged (stretch).
+FR-ADM-5: Endpoint to manually trigger projection recompute separate from clustering (for troubleshooting) (rate-limited).
 
 ## 6. Non-Functional Requirements
 NFR-PERF-1: Search median latency < 300 ms for corpus < 5K items (cold start excluded).  
@@ -122,6 +129,8 @@ See `project-brief.md` Section 9; PRD additions: add field `cluster_id` to Paper
 | POST | /admin/ingestion/resume | Resume loops |
 | POST | /admin/cluster/rebuild | Re-run clustering |
 | POST | /admin/item/{type}/{id}/reprocess | Force re-enrichment |
+| GET | /clusters/map | Return projection points + minimal metadata |
+| POST | /admin/projection/rebuild | Force projection recompute (admin) |
 
 Pagination Standard: `page`, `page_size` (default 20, max 100).  
 Error Handling: JSON: `{ "error": { "code": string, "message": string, "details"?: any } }`.
@@ -140,6 +149,8 @@ Error Handling: JSON: `{ "error": { "code": string, "message": string, "details"
 | ST-09 | Operator | Reprocess an item | Improve enrichment quality | New timestamp + updated fields |
 | ST-10 | Research Engineer | Filter by cluster | Focus exploration | Filter yields subset + cluster metadata |
 | ST-11 | Analyst | Inspect rationale for scores | Trust reliability | Rationale present & < 400 chars each |
+| ST-12 | Research Engineer | Explore an interactive cluster map | Discover topical neighborhoods | Pan/zoom, hover = tooltip, click opens detail |
+| ST-13 | Research Engineer | Lasso-select a region on the map | Narrow analysis to spatial subset | Selection converts to search filter list |
 
 ## 10. Acceptance Criteria Examples (Selected)
 Story ST-03 (Theory Query):
@@ -148,19 +159,26 @@ Story ST-03 (Theory Query):
 - If (|supports| + |contradicts|) < 3 THEN related suggestions length ≥ 2.
 
 Story ST-06 (Repo URL Analysis):
+Story ST-12 (Cluster Map Interaction):
+- GIVEN the cluster map is loaded WHEN the user hovers an item THEN a tooltip shows title + scores within ≤ 50ms (cached client-side).
+- GIVEN a dense region WHEN zoomed in THEN point overlap reduces via progressive reveal (LOD) showing individual items.
+- GIVEN a lasso selection WHEN completed THEN search view updates filters to those item IDs or derived cluster/tag filters.
 - GIVEN valid GitHub repo URL WHEN posted THEN enrichment job runs within 30s queue placement AND detail response includes provisional summary (placeholder if final not ready) with `status: processing|complete`.
 
 ## 11. UX & UI Notes
-Minimal dark layout; consistent card components for entities. Tag chips, score badges (color scale). Theory mode uses 2-column support vs contradict layout; fallback suggestion panel appears only when evidence sparse.
+Minimal dark layout; consistent card components for entities. Tag chips, score badges (color scale). Theory mode uses 2-column support vs contradict layout; fallback suggestion panel appears only when evidence sparse. Cluster Map: WebGL or performant Canvas layer; dynamic quad-tree or grid-based binning; tooltips positioned via screen-space transform; lasso overlay (SVG path) capturing projected coordinate bounds.
 
 ## 12. Open Items / To Clarify (Will Refine in v0.2)
 - ANN acceleration trigger threshold (10K vs 15K items?).
 - Specific heuristics for repo → paper linkage confidence scaling.
 - Exact cluster facet labeling (numeric vs generated label via top tags).
+- Progressive aggregation strategy for cluster map when item count > 20K (heatmap tile pyramid?).
+- Whether to allow temporal slider overlay (deferred) for cluster evolution.
 
 ## 13. Risks / Mitigations (Delta vs Brief)
 - Re-enrichment churn risk if prompts change frequently → add versioning field `enrichment_version`.
 - Theory classification drift → add regression prompt test harness (stretch).
+ - Projection recalculation cost grows with corpus → batch + reuse existing coordinates for unchanged items.
 
 ## 14. Release Phasing
 Phase 1 (Weeks 1–2): Ingestion + enrichment pipeline + storage + health + basic search.  

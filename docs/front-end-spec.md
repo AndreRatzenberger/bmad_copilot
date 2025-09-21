@@ -18,6 +18,7 @@ Top-Level Areas:
 - Theory Explorer (/theory): input, evidence split view, suggestions.
 - URL Analyze (/analyze): single-shot enrichment.
 - Admin (/admin): ingestion controls, metrics snapshot.
+ - Cluster Map (/clusters): interactive semantic 2D projection of papers & repos (zoom/pan, hover tooltips, lasso select → filter pipe into Search view).
 Global Layout:
 - Left Sidebar (collapsible): Navigation + status badges + cluster quick filter toggle.
 - Main Content: Routed views.
@@ -99,6 +100,29 @@ Display placeholder skeleton card with spinner until enrichment finishes—auto-
 Tiles: Ingestion Control (Pause/Resume), Metrics (counts & avg times), Clustering (last run, items, runtime), Cost (estimated tokens).  
 Potential Danger Zone: Force reprocess form.
 
+### 6.7 Cluster Map
+Purpose: Spatial exploration & discovery of emergent topical neighborhoods beyond faceted list scanning.
+Data Source: `/clusters/map` endpoint – returns projection coordinates (x,y in normalized [-1,1] or 0..1), cluster_id, minimal metadata, projection_version.
+Rendering Strategy:
+- Layer 1: Base scatter (WebGL / canvas batch).  
+- Layer 2: Density overlay (optional toggle) using grid aggregation or kernel density (fast approximate).  
+- Layer 3: Interaction overlay (SVG or Canvas) for lasso path + selected hull highlight.  
+Interactions:
+- Zoom (wheel / pinch) + Pan (drag background).  
+- Hover point → tooltip (title, scores, top tag).  
+- Click point → open detail drawer (or navigate to Item Detail).  
+- Lasso (hold Shift + drag) to select region → convert to search filter (list of IDs or cluster / tag inference when > threshold).  
+- Density toggle & point size slider (range: auto / small / medium).  
+Performance Targets:
+- Initial render ≤ 1.2s for ≤ 5K points; maintain ≥ 45 FPS on typical laptop GPU.  
+- Degrade gracefully > 10K points: switch to aggregated heat cells until zoom threshold reveals individual nodes.  
+Stability:
+- Only re-fetch when `projection_version` changes.  
+- Persist last camera transform in session (localStorage) under `clusterMapViewState`.
+Accessibility:
+- Keyboard navigation: cycle nearest points with Arrow keys when map focused.  
+- Screen-reader fallback list for currently selected / hovered item.
+
 ## 7. Component Library (Initial Set)
 | Component | Purpose | Notes |
 |-----------|---------|-------|
@@ -118,6 +142,12 @@ Potential Danger Zone: Force reprocess form.
 | MetricTile | Admin metrics | Value + sparkline (stretch) |
 | ToggleGroup | Entity type filter | Accessible segmented control |
 | ConfirmationModal | Critical admin actions | Esc + trap focus |
+| ClusterMapCanvas | High-perf scatter / heat rendering | WebGL or performant canvas; supports point LOD |
+| ClusterMapToolbar | Map controls | Zoom reset, density toggle, point size slider |
+| LassoLayer | Handles region selection | Emits bounding polygon + item IDs |
+| MapTooltip | Hover detail | Portal positioned, keyboard accessible |
+| DensityLegend | Explains heat color scale | Hidden when density off |
+| MiniMap (stretch) | Overview inset | Shows current viewport rectangle |
 
 Accessibility & A11y Notes:
 - All interactive elements reachable via Tab order; visual focus ring (#2563EB).  
@@ -131,7 +161,15 @@ Cache TTLs:
 - Search queries: 60s staleTime; prefetch next page on near-end scroll.
 - Item details: 5 min staleTime with background refetch.
 - Ingestion status: Poll every 15s.
+ - Cluster map points: treat as stable for a projection_version (staleTime = Infinity until version change endpoint field).
 Optimistic Prefetch: On link hover (desktop) for item detail + similar.
+Projection Version Handling:
+- Separate query key: [`cluster-map`, projection_version].  
+- If version mismatch detected (status endpoint or map metadata), invalidate & refetch.
+Lasso Selection Flow:
+1. User draws polygon → get selected item IDs (or aggregated cluster counts).  
+2. Heuristic: if selected IDs > 150, convert to derived filter (clusters + top tags) instead of enumerating IDs.  
+3. Dispatch navigation to `/search` with encoded filter state.
 
 ## 9. API Consumption Contracts (Frontend Expectations)
 Search Response (example skeleton):
@@ -174,6 +212,20 @@ Theory Query Response:
   "timings":{"classification_ms":850}
 }
 ```
+Cluster Map Response (example):
+```json
+{
+  "projection_version": 3,
+  "generated_at": "2025-09-21T14:20:00Z",
+  "points": [
+    {"id":"p_abc123","type":"paper","cluster_id":5,"x":0.412,"y":-0.221,"scores":{"relevance":8,"interesting":9},"tag":"rl"},
+    {"id":"r_xyz789","type":"repo","cluster_id":2,"x":-0.118,"y":0.665,"scores":{"relevance":6,"interesting":7},"tag":"vision"}
+  ],
+  "bounds": {"minX":-1,"maxX":1,"minY":-1,"maxY":1},
+  "meta": {"total": 5231, "clusters": 37}
+}
+```
+Hover Detail Optimization: Accept batch query of up to 16 IDs if richer tooltip detail needed beyond base payload.
 
 ## 10. Interaction Patterns & Microcopy
 Microcopy Tone: Neutral-analytical. Avoid hype adjectives.  
@@ -205,6 +257,7 @@ Client Bundle Strategy:
 - Theory support/contradict columns use ARIA landmark roles (region + label).  
 - All charts (if any cluster bars) provide text alternatives.  
 - Keyboard reveals suggestion chips (arrow keys + Enter).  
+ - Cluster map: Provide aria-live region announcing selection counts; provide fallback list rendering of last 10 hovered or selected items.
 
 ## 14. Security & Privacy (Frontend Surface)
 - No API key exposure; only backend endpoints.  
@@ -216,6 +269,7 @@ Planned Future Slots:
 - Graph Visualization Panel (Item Detail) placeholder div with data attributes.
 - Timeline Tab (Cluster growth) stub route returning “Coming Soon”.  
 - Export Button location reserved in Search header (disabled state).
+ - Cluster Map future overlays: temporal slider, theory edge overlay, similarity filter gradient.
 
 ## 16. Implementation Recommendations
 - Use React Query for server state; central `apiClient` wrapper handles base URL + error shaping.  
@@ -228,12 +282,20 @@ Planned Future Slots:
 - Should clusters get human-friendly generated labels (top tags) vs numeric IDs (MVP numeric with tooltip tag summary).  
 - Do we need a side-by-side diff for reprocessed enrichment (stretch)?  
 - Should theory evidence confidence become adjustable threshold filter? (defer)
+ - What minimum zoom threshold triggers switch from aggregated heat to individual points?  
+ - Should we allow multi-lasso additive selection? (defer to v0.2)  
+ - Would temporal color encoding (age gradient) improve discovery or add noise? (evaluate after initial usage)
 
 ## 18. Acceptance Criteria (UX-Specific)
 - All interactive elements focusable + visible focus ring.
 - Search results keyboard navigation (ArrowDown/Up) cycles cards; Enter opens detail.
 - Theory Explorer: submitting identical theory twice caches result (no spinner) for 2 minutes.
 - Loading skeleton appears for any API call > 250ms (debounce threshold) to prevent flicker.
+ - Cluster map initial load spinner replaced by canvas within 1.2s (≤5K points test corpus).
+ - Hover tooltip appears within ≤ 50ms after pointer stops moving (debounced at 30ms).
+ - Lasso selection with ≤ 2K points in view completes polygon classification < 120ms.
+ - Zoom interaction maintains ≥ 45 FPS (profiling baseline) at 5K points; degrade mode (heat aggregation) auto-activates > 10K points.
+ - Projection version change triggers unobtrusive toast: “Cluster map updated (vX)” and smoothly cross-fades to new positions (no abrupt pop).
 
 ## 19. Delivery Artifacts
 - Component hierarchy diagram (TBD in architecture doc).
@@ -241,24 +303,26 @@ Planned Future Slots:
 - Example screenshot mocks (if time) — not required pre-architecture.
 
 ## 20. Handoff to Architecture
-Architecture must define: API latency budgets, clustering job interface, item similarity retrieval strategy, streaming vs polling for long-running theory classification (MVP: polling).
+Architecture must define: API latency budgets, clustering job interface, item similarity retrieval strategy, streaming vs polling for long-running theory classification (MVP: polling), projection pipeline (UMAP vs PCA fallback), projection_version emission, level-of-detail aggregation thresholds, and batching strategy for hover detail enrichment.
 
 ---
 # AI UI Generation Prompt (For Tools Like v0 / Lovable)
 Use this prompt verbatim (adjust branding if needed):
 
 """
-Design a dark-mode first responsive research console web app called "Research Catalog" with the following core routes: Dashboard, Search, Item Detail, Theory Explorer, URL Analyze, Admin. Use a compact, information-dense layout suitable for technical users.
+Design a dark-mode first responsive research console web app called "Research Catalog" with the following core routes: Dashboard, Search, Item Detail, Theory Explorer, URL Analyze, Admin, Clusters. Use a compact, information-dense layout suitable for technical users.
 
 Overall Goals:
 - Rapid triage of AI research papers + related repos.
 - Theory exploration: show supporting vs contradicting evidence.
 - Unified search across papers and repos with clustering facets.
+- Spatial discovery via an interactive semantic cluster map (zoom/pan, hover, lasso select) to identify emergent research neighborhoods.
 
 Layout:
-- Left collapsible sidebar (logo: minimal hexagon + "Research Catalog") with nav items (Dashboard, Search, Theory, Analyze, Admin) and status section at bottom (ingestion state badge + build hash placeholder).
+- Left collapsible sidebar (logo: minimal hexagon + "Research Catalog") with nav items (Dashboard, Search, Theory, Analyze, Clusters, Admin) and status section at bottom (ingestion state badge + build hash placeholder).
 - Main content area with card-based lists and subtle surface elevation.
 - Optional right utility panel for similar items or theory suggestions (hidden on mobile).
+- Clusters page: large central WebGL/canvas map, toolbar (zoom reset, density toggle, point size slider), optional density heat overlay, lasso selection overlay, mini-map (optional).
 
 Components:
 - Entity Card: title, type badge (Paper/Repo), short summary (2 lines clamp), tags (max 4), dual score badges (relevance & interestingness) with color-coded rings.
@@ -267,6 +331,7 @@ Components:
 - Search Filters: chips for entity type toggles, cluster dropdown, tag multi-select (combobox), score range slider.
 - URL Analyze form: input + Analyze button, result card placeholder with spinner state.
 - Admin tiles: curved cards showing ingestion status (running/paused), counts, cluster job last run, token cost estimate.
+- Cluster Map: performant WebGL scatter with pan/zoom (trackpad + scroll), density heat overlay toggle, hover tooltip, lasso selection (Shift + drag) converting selection to filter chips, point size scaling by score band (optional), legend for density scale.
 
 Visual Style:
 - Dark background (#0E1116), surfaces (#161B22, elevated #1F242C), accent blues (#3B82F6 primary, #6366F1 secondary).
@@ -277,8 +342,9 @@ Visual Style:
 Interactions:
 - Hover card reveals quick action icons (open detail, copy ID).
 - Cards prefetch detail data on hover.
+- Cluster map hover shows tooltip; clicking opens detail view; lasso select produces selection bar with “Filter in Search” button.
 - Skeleton loaders for lists (3 shimmer rows) and detail (title bar + paragraphs) appear if load > 250ms.
-- Keyboard shortcuts: / focuses search, t opens theory page, s selects search input, p toggles pause ingestion (if on Admin page focus context).
+- Keyboard shortcuts: / focuses search, t opens theory page, c opens cluster map, s selects search input, p toggles pause ingestion (if on Admin page focus context).
 
 Accessibility:
 - All interactive elements keyboard accessible with visible focus ring.
@@ -288,9 +354,11 @@ Accessibility:
 Mobile:
 - Sidebar collapses to top nav bar + overflow menu.
 - Theory columns stack vertically (Supporting first, then Contradicting) with anchor jump links.
+- Cluster map switches to simplified mode: aggregated heat cells; tap to expand area; lasso disabled (fallback to tap-select multi via long-press).
 
 Do NOT implement backend logic—scaffold UI with placeholder data loaders and props.
 Keep code modular with a components/ directory and hooks/ for data placeholders.
+Maintain performance: prefer instanced rendering for points; degrade to aggregation automatically at scale.
 """
 
 ---
