@@ -1,0 +1,41 @@
+[project]
+name = "mvp-backend"
+version = "0.1.0"
+description = "MVP backend scaffold (FastAPI) with observability, auth, and reindex spec"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [ { name = "Team" } ]
+dependencies = [
+  "fastapi==0.111.0",
+  "uvicorn[standard]==0.30.1",
+  "pydantic==2.7.4",
+  "pydantic-settings==2.2.1",
+  "tinydb==4.8.0",
+  "httpx==0.27.0",
+  "prometheus-client==0.20.0",
+  "python-dotenv==1.0.1"
+]
+
+[project.optional-dependencies]
+ml = [
+  "numpy==1.26.4",
+  "scikit-learn==1.5.0",
+  "umap-learn==0.5.5",
+  "hdbscan==0.8.33"
+]
+test = [
+  "pytest==8.2.2",
+  "pytest-asyncio==0.23.7"
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+# Ensures optional dependency groups can be installed with: uv sync --extra ml --extra test

@@ -4,5 +4,8 @@
   "github.copilot.chat.agent.runTasks": true,
   "chat.mcp.discovery.enabled": true,
   "github.copilot.chat.agent.autoFix": true,
-  "chat.tools.autoApprove": false
+  "chat.tools.autoApprove": false,
+  "python-envs.defaultEnvManager": "ms-python.python:conda",
+  "python-envs.defaultPackageManager": "ms-python.python:conda",
+  "python-envs.pythonProjects": []
 }
