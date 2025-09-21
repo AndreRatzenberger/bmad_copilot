@@ -31,6 +31,7 @@ In Scope (MVP):
 - Sparse result fallback: suggest related theories OR trigger targeted ingestion (controlled).
 - Dark-mode first web UI (React + Vite + Tailwind if allowed).
  - Interactive cluster visualization (semantic 2D projection with zoom/pan, hover detail, click to open item, cluster density shading, lasso multi-select to filter search).
+ - Runtime configurable LLM and embedding model selection (via lite-llm layer) from Admin UI.
 
 Out of Scope (MVP):
 - User accounts / personalization.
@@ -100,6 +101,12 @@ FR-ADM-2: Endpoint to trigger on-demand re-cluster.
 FR-ADM-3: Endpoint to force re-enrichment of an item (for prompt iteration).  
 FR-ADM-4: Configuration values (intervals, thresholds) readable via API; mutable only if flagged (stretch).
 FR-ADM-5: Endpoint to manually trigger projection recompute separate from clustering (for troubleshooting) (rate-limited).
+FR-ADM-6: Endpoint to list available LLM completion models (provider, name, context_window, cost_estimates).  
+FR-ADM-7: Endpoint to list available embedding models (dimension, provider, cost_estimates).  
+FR-ADM-8: Endpoint to set active LLM model (validates with lite-llm test call).  
+FR-ADM-9: Endpoint to set active embedding model (reject if dimension differs from existing index unless force flag).  
+FR-ADM-10: Endpoint to fetch current active models + version numbers.  
+FR-ADM-11: (Stretch) Endpoint to dry-run enrichment with prospective model (not persisted) returning diff summary.
 
 ## 6. Non-Functional Requirements
 NFR-PERF-1: Search median latency < 300 ms for corpus < 5K items (cold start excluded).  
@@ -131,6 +138,11 @@ See `project-brief.md` Section 9; PRD additions: add field `cluster_id` to Paper
 | POST | /admin/item/{type}/{id}/reprocess | Force re-enrichment |
 | GET | /clusters/map | Return projection points + minimal metadata |
 | POST | /admin/projection/rebuild | Force projection recompute (admin) |
+| GET | /admin/models/llm | List available LLM models |
+| GET | /admin/models/embeddings | List available embedding models |
+| GET | /admin/models/active | Current active models |
+| POST | /admin/models/llm/select | Set active LLM (body: {model_id}) |
+| POST | /admin/models/embeddings/select | Set active embedding (body: {model_id, force?:bool}) |
 
 Pagination Standard: `page`, `page_size` (default 20, max 100).  
 Error Handling: JSON: `{ "error": { "code": string, "message": string, "details"?: any } }`.
@@ -151,6 +163,8 @@ Error Handling: JSON: `{ "error": { "code": string, "message": string, "details"
 | ST-11 | Analyst | Inspect rationale for scores | Trust reliability | Rationale present & < 400 chars each |
 | ST-12 | Research Engineer | Explore an interactive cluster map | Discover topical neighborhoods | Pan/zoom, hover = tooltip, click opens detail |
 | ST-13 | Research Engineer | Lasso-select a region on the map | Narrow analysis to spatial subset | Selection converts to search filter list |
+| ST-14 | Operator | Change active LLM model | Optimize cost/quality tradeoff | Model switch validated + version incremented |
+| ST-15 | Operator | Change embedding model safely | Upgrade quality | Reject if dimension mismatch unless force with warning |
 
 ## 10. Acceptance Criteria Examples (Selected)
 Story ST-03 (Theory Query):
@@ -160,13 +174,21 @@ Story ST-03 (Theory Query):
 
 Story ST-06 (Repo URL Analysis):
 Story ST-12 (Cluster Map Interaction):
+Story ST-14 (LLM Model Switch):
+- GIVEN list of available models WHEN operator selects a new LLM THEN system performs a test completion (health check) AND only on success updates active model & increments `llm_model_version`.  
+- WHEN switch completes THEN enrichment pipeline uses new model for subsequent items (existing items remain unchanged) AND audit log entry written.
+
+Story ST-15 (Embedding Model Switch):
+- GIVEN current embedding dimension D WHEN operator selects model with dimension D' != D without `force=true` THEN request rejected with informative error.  
+- GIVEN `force=true` WHEN accepted THEN system sets new embedding model but flags `reindex_required=true` until manual re-embed job executed (stretch).  
+- UI shows warning: "Similarity quality degraded until re-embedding completes".
 - GIVEN the cluster map is loaded WHEN the user hovers an item THEN a tooltip shows title + scores within ≤ 50ms (cached client-side).
 - GIVEN a dense region WHEN zoomed in THEN point overlap reduces via progressive reveal (LOD) showing individual items.
 - GIVEN a lasso selection WHEN completed THEN search view updates filters to those item IDs or derived cluster/tag filters.
 - GIVEN valid GitHub repo URL WHEN posted THEN enrichment job runs within 30s queue placement AND detail response includes provisional summary (placeholder if final not ready) with `status: processing|complete`.
 
 ## 11. UX & UI Notes
-Minimal dark layout; consistent card components for entities. Tag chips, score badges (color scale). Theory mode uses 2-column support vs contradict layout; fallback suggestion panel appears only when evidence sparse. Cluster Map: WebGL or performant Canvas layer; dynamic quad-tree or grid-based binning; tooltips positioned via screen-space transform; lasso overlay (SVG path) capturing projected coordinate bounds.
+Minimal dark layout; consistent card components for entities. Tag chips, score badges (color scale). Theory mode uses 2-column support vs contradict layout; fallback suggestion panel appears only when evidence sparse. Cluster Map: WebGL or performant Canvas layer; dynamic quad-tree or grid-based binning; tooltips positioned via screen-space transform; lasso overlay (SVG path) capturing projected coordinate bounds. Admin Model Configuration: dual selector panels (LLM + Embedding) with metadata columns (provider, context, cost/1K tokens, dimension for embeddings, last switched timestamp). Confirmation modal appears if projected token cost increase > configured threshold.
 
 ## 12. Open Items / To Clarify (Will Refine in v0.2)
 - ANN acceleration trigger threshold (10K vs 15K items?).
@@ -174,11 +196,14 @@ Minimal dark layout; consistent card components for entities. Tag chips, score b
 - Exact cluster facet labeling (numeric vs generated label via top tags).
 - Progressive aggregation strategy for cluster map when item count > 20K (heatmap tile pyramid?).
 - Whether to allow temporal slider overlay (deferred) for cluster evolution.
+ - Standard cost baseline for warning threshold on model switch (percentage? absolute $?).
+ - UI placement for future prompt template editing (same admin page vs separate).
 
 ## 13. Risks / Mitigations (Delta vs Brief)
 - Re-enrichment churn risk if prompts change frequently → add versioning field `enrichment_version`.
 - Theory classification drift → add regression prompt test harness (stretch).
  - Projection recalculation cost grows with corpus → batch + reuse existing coordinates for unchanged items.
+ - Model switch could introduce inconsistent scoring across time → track `llm_model_version` & `embedding_model_version` on each item for audit & potential recalibration.
 
 ## 14. Release Phasing
 Phase 1 (Weeks 1–2): Ingestion + enrichment pipeline + storage + health + basic search.  

@@ -100,6 +100,16 @@ Display placeholder skeleton card with spinner until enrichment finishes—auto-
 Tiles: Ingestion Control (Pause/Resume), Metrics (counts & avg times), Clustering (last run, items, runtime), Cost (estimated tokens).  
 Potential Danger Zone: Force reprocess form.
 
+Model Configuration Panel (new subsection):
+- LLM Model Selector: table/list with columns (Model ID, Provider, Context Window, Cost /1K tokens, Status).  
+- Embedding Model Selector: table/list with columns (Model ID, Provider, Dimension, Cost /1K tokens, Active?).  
+- Active model rows highlighted; inactive rows have “Select” button.  
+- Upon selection attempt → preflight test call spinner (LLM) or dimension validation (Embedding).  
+- If embedding dimension mismatch → show modal: "Dimension mismatch (current: 1536, new: 3072). Force switch will mark existing similarities stale until re-embed. Continue?"  
+- Cost Increase Warning: If (new model cost / current cost) - 1 >= threshold (default 0.35) show yellow warning badge in confirmation modal.  
+- Post-switch toast: “Active LLM model updated to gpt-4.1-mini (v5).”  
+- Display read-only audit list (last 5 model changes with timestamp + user label placeholder).
+
 ### 6.7 Cluster Map
 Purpose: Spatial exploration & discovery of emergent topical neighborhoods beyond faceted list scanning.
 Data Source: `/clusters/map` endpoint – returns projection coordinates (x,y in normalized [-1,1] or 0..1), cluster_id, minimal metadata, projection_version.
@@ -148,6 +158,11 @@ Accessibility:
 | MapTooltip | Hover detail | Portal positioned, keyboard accessible |
 | DensityLegend | Explains heat color scale | Hidden when density off |
 | MiniMap (stretch) | Overview inset | Shows current viewport rectangle |
+| ModelSelectorTable | Lists LLM or embedding models | Reusable with column config |
+| ModelSelectModal | Confirm model switch | Shows cost diff, warnings |
+| CostBadge | Visual indicator of relative token cost | Color-coded tiers |
+| DimensionWarning | Embedding mismatch alert | Provides force switch CTA |
+| AuditLogList | Recent admin model changes | Paginated (stretch) |
 
 Accessibility & A11y Notes:
 - All interactive elements reachable via Tab order; visual focus ring (#2563EB).  
@@ -170,6 +185,18 @@ Lasso Selection Flow:
 1. User draws polygon → get selected item IDs (or aggregated cluster counts).  
 2. Heuristic: if selected IDs > 150, convert to derived filter (clusters + top tags) instead of enumerating IDs.  
 3. Dispatch navigation to `/search` with encoded filter state.
+
+Model Config State:
+- Query keys: [`models`, `llm`], [`models`, `embeddings`], [`models`, `active`].  
+- Optimistic update avoided (require server confirmation).  
+- On successful switch: invalidate affected queries + increment local version store; optionally show inline diff metrics (enrichment queue now tagged with new version).
+Version Propagation:
+- `llm_model_version` & `embedding_model_version` fetched with active call and passed via context for conditional ribbons (e.g., “New model active” badges on recent items).  
+Force Switch Flow (Embedding):
+1. User selects incompatible dimension model.  
+2. Show `DimensionWarning` modal with impact summary.  
+3. If confirmed with force → POST select endpoint `{ force: true }`; show toast about reindex requirement.  
+4. UI sets global flag `reindexRequired=true` (banner shown in Search & Dashboard).
 
 ## 9. API Consumption Contracts (Frontend Expectations)
 Search Response (example skeleton):
@@ -226,6 +253,29 @@ Cluster Map Response (example):
 }
 ```
 Hover Detail Optimization: Accept batch query of up to 16 IDs if richer tooltip detail needed beyond base payload.
+Model Listing (LLM example):
+```json
+[
+  {"id":"gpt-4.1-mini","provider":"openai","context":128000,"cost_per_1k_tokens":{"input":0.003,"output":0.006},"available":true},
+  {"id":"gpt-4o","provider":"openai","context":128000,"cost_per_1k_tokens":{"input":0.005,"output":0.015},"available":true}
+]
+```
+Active Models:
+```json
+{
+  "llm":{"id":"gpt-4.1-mini","version":5},
+  "embedding":{"id":"text-embedding-3-large","dimension":3072,"version":2},
+  "flags":{"reindex_required":false}
+}
+```
+Select Response (LLM):
+```json
+{"status":"ok","active":{"llm":"gpt-4.1-mini","version":6}}
+```
+Embedding Switch (force mismatch):
+```json
+{"status":"ok","active":{"embedding":"text-embedding-3-large"},"reindex_required":true}
+```
 
 ## 10. Interaction Patterns & Microcopy
 Microcopy Tone: Neutral-analytical. Avoid hype adjectives.  
@@ -247,6 +297,7 @@ Targets:
 - First Contentful Paint < 1.2s (local dev baseline).  
 - Search render < 150ms after JSON arrival.  
 - Hover prefetch budget < 200ms (abort if network slow).  
+ - Model list load < 400ms for ≤ 25 models; selection round-trip < 2s including test call.
 Client Bundle Strategy:
 - Code split: /theory and /admin lazy loaded.  
 - Shared component chunk (< 120 KB gzip).  
@@ -258,6 +309,7 @@ Client Bundle Strategy:
 - All charts (if any cluster bars) provide text alternatives.  
 - Keyboard reveals suggestion chips (arrow keys + Enter).  
  - Cluster map: Provide aria-live region announcing selection counts; provide fallback list rendering of last 10 hovered or selected items.
+ - Model tables: ensure column headers announced; selection buttons have aria-label "Select LLM model {id}".
 
 ## 14. Security & Privacy (Frontend Surface)
 - No API key exposure; only backend endpoints.  
@@ -270,6 +322,7 @@ Planned Future Slots:
 - Timeline Tab (Cluster growth) stub route returning “Coming Soon”.  
 - Export Button location reserved in Search header (disabled state).
  - Cluster Map future overlays: temporal slider, theory edge overlay, similarity filter gradient.
+ - Model config: placeholder tab for future prompt template editing & caching policies.
 
 ## 16. Implementation Recommendations
 - Use React Query for server state; central `apiClient` wrapper handles base URL + error shaping.  
@@ -285,6 +338,8 @@ Planned Future Slots:
  - What minimum zoom threshold triggers switch from aggregated heat to individual points?  
  - Should we allow multi-lasso additive selection? (defer to v0.2)  
  - Would temporal color encoding (age gradient) improve discovery or add noise? (evaluate after initial usage)
+ - Should we persist cost baseline per model to show historical trend?  
+ - Do we need a dry-run diff viewer for enrichment output between models (stretch)?
 
 ## 18. Acceptance Criteria (UX-Specific)
 - All interactive elements focusable + visible focus ring.
@@ -296,6 +351,9 @@ Planned Future Slots:
  - Lasso selection with ≤ 2K points in view completes polygon classification < 120ms.
  - Zoom interaction maintains ≥ 45 FPS (profiling baseline) at 5K points; degrade mode (heat aggregation) auto-activates > 10K points.
  - Projection version change triggers unobtrusive toast: “Cluster map updated (vX)” and smoothly cross-fades to new positions (no abrupt pop).
+ - Model switch shows confirmation modal if cost delta > threshold OR dimension mismatch.  
+ - Selecting compatible embedding model updates active display without warning modal.  
+ - Force embedding switch sets global reindex banner visible across routes until dismissed post reindex.
 
 ## 19. Delivery Artifacts
 - Component hierarchy diagram (TBD in architecture doc).
@@ -332,6 +390,14 @@ Components:
 - URL Analyze form: input + Analyze button, result card placeholder with spinner state.
 - Admin tiles: curved cards showing ingestion status (running/paused), counts, cluster job last run, token cost estimate.
 - Cluster Map: performant WebGL scatter with pan/zoom (trackpad + scroll), density heat overlay toggle, hover tooltip, lasso selection (Shift + drag) converting selection to filter chips, point size scaling by score band (optional), legend for density scale.
+ - Model Configuration Panel: two responsive tables:
+   * LLM Models Table (columns: Model ID, Provider, Context Window, Input $/1K, Output $/1K, Status/Select action)
+   * Embedding Models Table (columns: Model ID, Provider, Dimension, $/1K tokens, Active?)
+   * Active rows visually highlighted; non-active show a “Select” button.
+   * CostBadge component (color tiers: green <= baseline, amber <= +35%, red > +35%).
+   * Dimension mismatch modal (force switch warning message + consequences list).
+   * AuditLog list (last 5 switches: timestamp, model id, type, version).
+   * Reindex Required Banner (appears after forced embedding dimension change) persistent across routes until dismissed.
 
 Visual Style:
 - Dark background (#0E1116), surfaces (#161B22, elevated #1F242C), accent blues (#3B82F6 primary, #6366F1 secondary).
@@ -345,20 +411,27 @@ Interactions:
 - Cluster map hover shows tooltip; clicking opens detail view; lasso select produces selection bar with “Filter in Search” button.
 - Skeleton loaders for lists (3 shimmer rows) and detail (title bar + paragraphs) appear if load > 250ms.
 - Keyboard shortcuts: / focuses search, t opens theory page, c opens cluster map, s selects search input, p toggles pause ingestion (if on Admin page focus context).
+ - Model selection: click Select → preflight spinner (simulate test call) → confirmation modal if cost delta > threshold or dimension mismatch.
+ - Force embedding switch sets global reindex banner with link to “Learn more”.
+ - Hover model row shows tooltip with extended provider notes (placeholder).
 
 Accessibility:
 - All interactive elements keyboard accessible with visible focus ring.
 - Sufficient contrast on tags and score badges (WCAG AA).
 - Provide ARIA labels for score badges: "Relevance score 8 out of 10".
+ - Tables: proper <table>/<thead>/<tbody>; each Select button has aria-label “Select LLM model {id}” or “Select embedding model {id}”.
+ - Reindex banner announced via aria-live polite on appearance.
 
 Mobile:
 - Sidebar collapses to top nav bar + overflow menu.
 - Theory columns stack vertically (Supporting first, then Contradicting) with anchor jump links.
 - Cluster map switches to simplified mode: aggregated heat cells; tap to expand area; lasso disabled (fallback to tap-select multi via long-press).
+ - Model tables collapse to card list (stacked) with key metrics; Select action remains primary button at bottom of card.
 
 Do NOT implement backend logic—scaffold UI with placeholder data loaders and props.
 Keep code modular with a components/ directory and hooks/ for data placeholders.
 Maintain performance: prefer instanced rendering for points; degrade to aggregation automatically at scale.
+ Provide mock data JSON for model tables; implement state placeholders for active model and reindex banner.
 """
 
 ---

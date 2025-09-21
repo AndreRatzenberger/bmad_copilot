@@ -32,6 +32,7 @@ Included:
 - Sparse result fallback: suggest related theories OR trigger deeper ingestion cycle.
 - Single URL analysis (paper PDF or repo) on demand.
 - Interactive cluster visualization (2D semantic projection with zoom/pan/select) enabling discovery of clusters and individual papers/repositories via spatial layout.
+ - Runtime model configuration (Admin can change active LLM completion model and embedding model without restart using lite-llm abstraction layer).
 
 Deferred / Stretch (Not MVP):
 - Alerting / subscriptions.
@@ -129,13 +130,16 @@ UI Stack: Vite + React + Tailwind (if allowed) or minimal custom CSS; component-
   - GraphService: similarity index + edge maintenance.
   - SearchService: vector search (naive in-memory Faiss optional future; MVP pure cosine on loaded vectors).
   - TheoryService: hypothesis indexing & evidence aggregation.
+  - ModelConfigService: manages active LLM + embedding model, validates availability via lite-llm test ping, persists selection (TinyDB config collection) and broadcasts version increment for enrichment pipeline.
 - API (FastAPI): endpoints for search, item detail, theory analysis, ingestion control, health, cluster listing.
+ - Admin Model Endpoints: list models, select model, dry-run test call.
 
 ## 16. Tech Stack Decisions (MVP)
 - Python: FastAPI + uvicorn.
 - Task Concurrency: `asyncio` tasks (avoid Celery/Kafka complexity for MVP).
 - Storage: TinyDB + flat files (embeddings, PDFs, repos).
 - Embeddings & LLM: OpenAI / Azure OpenAI (config via `.env`).
+- Model Abstraction: `lite-llm` to allow switching among providers (OpenAI, Azure OpenAI); consistent interface for both text (completion) and embeddings.
 - Testing: Pytest (backend), Playwright for frontend E2E (later stage after initial UI skeleton).
 - Containerization: Dockerfile (multi-stage: builder + runtime).  
 
@@ -157,6 +161,9 @@ UI Stack: Vite + React + Tailwind (if allowed) or minimal custom CSS; component-
 | Disk growth (PDFs/repos) | Resource pressure | Low | Configurable retention policy + periodic prune |
 | Projection instability (layout shifts) | User distrust of map | Medium | Stable seeding, cache coords, only reproject on scheduled cluster jobs |
 | Large point overdraw in canvas/SVG | Performance degradation | Medium | Use WebGL / canvas layer & level-of-detail aggregation (cluster heat tiles) |
+| Incorrect model switch (incompatible context limits) | Pipeline failures | Low | Pre-validation test call + metadata check before commit |
+| Model cost spike after switch | Budget impact | Medium | Show cost estimate (tokens per 1K) in selector + require confirmation if >X% increase |
+| Embedding dimension change | Similarity breakage | Medium | Enforce compatibility check (reject dimension mismatch) + require full re-embed manual action |
 
 ## 19. Success Metrics (Initial)
 - M1: ≥ 2,000 enriched items discoverable with < 300 ms median search response.
