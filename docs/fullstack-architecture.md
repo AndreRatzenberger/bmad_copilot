@@ -343,3 +343,72 @@ sequenceDiagram
 
 ---
 End of Fullstack Architecture v0.1
+
+## 21. Frontend Integration Alignment (POC Delta – 2025-09-22)
+This section records the current Next.js frontend proof-of-concept state and required integration adjustments (see `front-end-spec.md` addendum & `ui-implementation-status.md`).
+
+### 21.1 Current Frontend Reality
+- Framework: Next.js (App Router) with static/mock data (no React Query yet).
+- Implemented Routes: `/`, `/search`, `/theory`, `/analyze`, `/clusters` (placeholder), `/admin`.
+- Missing: `/item/[id]` detail view; model configuration UI; real cluster map rendering; theory evidence results; URL analyze state machine.
+- State Management: No query client or global store integrated yet (spec expected React Query + lightweight store).
+
+### 21.2 Required API Surface (Phase 1)
+| Feature | Endpoint(s) | Notes |
+|---------|-------------|-------|
+| Search | GET /search | Supports filters: q, types[], cluster_id, tags[], score ranges, page, page_size. Return cluster facets & tag facets future. |
+| Item Detail | GET /item/{id} | Includes similar[] (≥5) + scores.rationale; 404 handling. |
+| Theory | POST /theory/query | Accepts theory string; async classification (MVP synchronous placeholder). Return supports[], contradicts[], related_suggestions[]. |
+| URL Analyze | POST /analyze/url + GET /analyze/status/{job_id} | Queue job and poll until complete or timeout. |
+| Cluster Map | GET /clusters/map | Return projection_version + points (initial static). |
+| Model Config | GET /admin/models (llm & embeddings), POST /admin/models/llm/select, POST /admin/models/embedding/select | Provide version increments & dimension mismatch flag. |
+| Ingestion Control | POST /admin/ingestion/{pause|resume} + GET /admin/status | Reflect running/paused state. |
+| Clustering Trigger | POST /admin/cluster/rebuild | Returns job status stub (id, state). |
+
+### 21.3 Client Integration Plan
+1. Introduce `apiClient.ts` wrapper (fetch with base URL + error normalization).
+2. Add React Query provider at root; define query keys: `['search', params]`, `['item', id]`, `['theory', hash(theory)]`, `['analyze', job_id]`, `['clusters', projection_version]`, `['models','llm']`, `['models','embedding']`, `['status','ingestion']`.
+3. Implement stale times: search 60s, item 5m, clusters Infinity (until projection_version changes), models 5m, status 15s polling, theory 2m cache per identical input.
+4. Similar Items: Item detail query returns similar list; no separate round-trip initially; later lazy-load.
+5. Invalidation Triggers: model switch → invalidate item & search (score rationale potentially model-dependent); embedding switch with reindex_required → show banner (no invalidation until reindex done). clustering rebuild completion → invalidate `clusters` & optionally `search` facets.
+
+### 21.4 Error & Loading Pattern Standardization
+- Introduce central `useApiQuery` hook that applies standardized skeleton thresholds (250ms) and toast on retriable errors.
+- Extend to `usePaginatedSearch` for pagination & prefetch next page.
+
+### 21.5 Accessibility Considerations to Feed Architecture
+- Score badges will expose rationale tooltips; API must supply `scores.rationale` consistently. Ensure presence even if placeholder to maintain predictable aria-label generation.
+- Theory results splitting requires evidence objects minimized (snippet + confidence). Provide ID for lazy expansion.
+
+### 21.6 Cluster Map Incremental Delivery
+Phase 0: Return a small synthetic point set to unblock canvas prototype.
+Phase 1: Actual embedding projection output (limit/ sample if >5K).
+Phase 2: Add `projection_version` change notifications (poll or admin toast) & optional density metadata.
+
+### 21.7 Model Configuration Data Contract Refinements
+- Add `cost_delta_ratio` precomputed server-side for candidate models vs active to simplify UI cost tier coloring.
+- Embedding select response should include `dimension` to detect mismatch without extra list query.
+
+### 21.8 Open Integration Questions
+| Question | Proposed Handling |
+|----------|------------------|
+| Theory classification duration variability | Start synchronous; add job/poll when avg > 3s. |
+| Similar items freshness after model switch | Mark similar lists stale if llm_model_version incremented (invalidate on switch). |
+| Partial enrichment items in search results | Include `status` field (complete|partial) so UI can show badge. |
+| Cluster map payload size scaling | Add `compression: gzip` guidance + optional thinning parameter `?sample=...`. |
+
+## 22. Backend Support Priorities (To Unblock Frontend)
+Priority order aligning with remediation plan:
+1. Implement GET /item/{id} (unlocks multiple stories & similar items consumption).
+2. Flesh out GET /search with filters (cluster_id, types[], paging) + facets skeleton.
+3. Implement model config endpoints (list/select) with versioning & dimension handling (enables admin UI differentiation early).
+4. Provide POST /theory/query stub returning deterministic mock arrays (supports/contradicts) for UI development.
+5. Implement URL analyze job stub (POST returns job_id; GET returns status progression with synthetic delay simulation).
+6. Provide static /clusters/map with projection_version=1 & sample points.
+7. Add ingestion status endpoint consumed by dashboard & admin (consistent status object).
+8. Add audit logging for model switches (append-only) to prepare for audit UI.
+
+Each endpoint should include minimal CORS, consistent error shaping (e.g., `{error:{code,message}}`), and request IDs for observability.
+
+---
+Architecture delta appended without altering prior numbered sections; future revisions should fold these into main narrative when POC transitions to integrated MVP.
