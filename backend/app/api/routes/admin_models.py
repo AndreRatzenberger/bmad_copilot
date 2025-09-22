@@ -10,25 +10,27 @@ class SelectModelBody(BaseModel):
     model_id: str
     force: bool | None = None  # for embedding only
 
-@router.get("/llm", response_model=SuccessEnvelope, dependencies=[Depends(admin_key_dependency)])
+    model_config = {"protected_namespaces": ()}
+
+@router.get("/llm", response_model=SuccessEnvelope | ErrorEnvelope, dependencies=[Depends(admin_key_dependency)])
 async def list_llm(request: Request):
     trace_id = getattr(request.state, "trace_id", None)
     models = [m.model_dump() for m in model_config.list_llm_models()]
     return SuccessEnvelope(data={"llm_models": models}, meta={"trace_id": trace_id})
 
-@router.get("/embeddings", response_model=SuccessEnvelope, dependencies=[Depends(admin_key_dependency)])
+@router.get("/embeddings", response_model=SuccessEnvelope | ErrorEnvelope, dependencies=[Depends(admin_key_dependency)])
 async def list_embeddings(request: Request):
     trace_id = getattr(request.state, "trace_id", None)
     models = [m.model_dump() for m in model_config.list_embedding_models()]
     return SuccessEnvelope(data={"embedding_models": models}, meta={"trace_id": trace_id})
 
-@router.get("/active", response_model=SuccessEnvelope, dependencies=[Depends(admin_key_dependency)])
+@router.get("/active", response_model=SuccessEnvelope | ErrorEnvelope, dependencies=[Depends(admin_key_dependency)])
 async def active_models(request: Request):
     trace_id = getattr(request.state, "trace_id", None)
     active = model_config.get_active().model_dump()
     return SuccessEnvelope(data={"active": active}, meta={"trace_id": trace_id})
 
-@router.post("/llm/select", response_model=SuccessEnvelope, dependencies=[Depends(admin_key_dependency)])
+@router.post("/llm/select", response_model=SuccessEnvelope | ErrorEnvelope, dependencies=[Depends(admin_key_dependency)])
 async def select_llm(request: Request, body: SelectModelBody = Body(...)):
     trace_id = getattr(request.state, "trace_id", None)
     try:
@@ -37,7 +39,7 @@ async def select_llm(request: Request, body: SelectModelBody = Body(...)):
         return ErrorEnvelope.from_error(code="MODEL_NOT_FOUND", message=str(e), trace_id=trace_id)
     return SuccessEnvelope(data={"active": active}, meta={"trace_id": trace_id})
 
-@router.post("/embeddings/select", response_model=SuccessEnvelope, dependencies=[Depends(admin_key_dependency)])
+@router.post("/embeddings/select", response_model=SuccessEnvelope | ErrorEnvelope, dependencies=[Depends(admin_key_dependency)])
 async def select_embedding(request: Request, body: SelectModelBody = Body(...)):
     trace_id = getattr(request.state, "trace_id", None)
     try:

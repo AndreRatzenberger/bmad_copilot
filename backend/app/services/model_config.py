@@ -16,11 +16,15 @@ class LLMModel(BaseModel):
     cost_input: float
     cost_output: float
 
+    model_config = {"protected_namespaces": ()}
+
 class EmbeddingModel(BaseModel):
     id: str
     provider: str
     dimension: int
     cost: float
+
+    model_config = {"protected_namespaces": ()}
 
 class ActiveModels(BaseModel):
     llm_id: str
@@ -28,6 +32,8 @@ class ActiveModels(BaseModel):
     embedding_id: str
     embedding_version: int
     reindex_required: bool = False
+
+    model_config = {"protected_namespaces": ()}
 
 _LLM_MODELS = [
     LLMModel(id="gpt-4.1-mini", provider="openai", context=128000, cost_input=0.003, cost_output=0.006),

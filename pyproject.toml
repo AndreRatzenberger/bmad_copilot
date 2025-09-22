@@ -17,6 +17,10 @@ dependencies = [
   "python-dotenv==1.0.1"
 ]
 
+[project.scripts]
+# Launch the FastAPI application (usage: uv run mvp-backend)
+mvp-backend = "backend.main:run"
+
 [project.optional-dependencies]
 ml = [
   "numpy==1.26.4",
@@ -39,3 +43,14 @@ build-backend = "hatchling.build"
 
 [tool.uv]
 # Ensures optional dependency groups can be installed with: uv sync --extra ml --extra test
+
+[tool.hatch.build]
+exclude = [
+  "frontend/**",
+  "docs/**",
+  "*.md",
+  "tests/**"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]

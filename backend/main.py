@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -10,8 +11,9 @@ from backend.app.api.routes.clusters import router as clusters_router
 from backend.app.api.routes.theory import router as theory_router
 from backend.app.storage.repository import seed_demo_items
 from backend.app.schemas.common import ErrorEnvelope
-from backend.app.observability.metrics import metrics_router
+from backend.app.observability import metrics as metrics_module
 from backend.app.security.auth import AuthError
+import uvicorn
 
 app = FastAPI(title="MVP Backend", version="0.1.0")
 
@@ -37,5 +39,23 @@ app.include_router(search_router)
 app.include_router(clusters_router)
 app.include_router(theory_router)
 app.include_router(admin_models_router, prefix="/admin/models", tags=["admin-models"])
-app.include_router(metrics_router)
+app.include_router(metrics_module.router)
+
+
+def run() -> None:
+    """Console script entry point for running the FastAPI app with uvicorn.
+
+    Honors environment variables:
+    - PORT (default 8000)
+    - HOST (default 0.0.0.0)
+    - RELOAD (truthy -> enables reload)
+    """
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    reload = os.getenv("RELOAD", "").lower() in {"1", "true", "yes"}
+    # Allow test environment to import run() without starting server by setting NO_SERVER=1
+    if os.getenv("NO_SERVER", "0") in {"1", "true", "yes"}:
+        print("NO_SERVER set; skipping uvicorn run.")  # noqa: T201
+        return
+    uvicorn.run("backend.main:app", host=host, port=port, reload=reload, factory=False)
 
