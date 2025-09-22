@@ -1,5 +1,70 @@
 <!-- Front-End Specification (UX Expert) -->
 # Front-End Specification: Research Catalog Database
+# Implementation Status Addendum (v0.1 POC Assessment)
+> This addendum documents the current frontend proof-of-concept implementation (Next.js app) as of 2025-09-22 and gaps versus the original specification. It is appended without altering original spec intent.
+
+## Route / Feature Status Summary
+| Area / Route | Status | Notes |
+|--------------|--------|-------|
+| Global Layout & Sidebar | Partial | Sidebar + status present; footer absent; right utility panel pattern partially present; no persistent footer build hash. |
+| Dashboard | Partial | Recent items (mock), quick stats, recent activity, quick actions done; missing cluster snapshot & ingestion pause/resume inline. |
+| Search | Partial | Query input, mixed results mock, filters side panel scaffold; missing real data, pagination/infinite strategy, empty states, view toggle, proper tag multi-select, keyboard nav. |
+| Item Detail | Missing | No /item/:id route; similar items only implied in search side panel (not detail context). |
+| Theory Explorer | Scaffold | Input + suggestions + empty state; missing evidence results columns, analysis states, confidence badges. |
+| URL Analyze | Scaffold | Input + example URLs; missing state machine, progress, result insertion, polling. |
+| Admin | Partial | Metrics tiles and actions present; missing model configuration tables, cost/dimension modals, audit log, reindex banner. |
+| Cluster Map | Placeholder | Toolbar + sliders + help text only; no WebGL/canvas, zoom/pan, lasso, density overlay. |
+| Model Config (LLM/Embedding) | Missing | Not implemented anywhere. |
+| Accessibility Enhancements | Missing | Need ARIA roles for regions, score badge labels, keyboard navigation patterns. |
+| Performance Budgets | N/A | Not measurable with static mock content. |
+| State Management (React Query/Zustand) | Missing | Current Next.js POC uses static/mock data; no query client integration. |
+| Keyboard Shortcuts | Missing/Unknown | Not verified; no visible bindings beyond placeholder comment in spec. |
+| Cluster Map Advanced Interactions | Missing | Lasso, density, point LOD not started. |
+
+## Component Implementation Coverage
+| Component (Spec) | Status | Notes |
+|------------------|--------|-------|
+| AppShell | Partial | Layout split exists but not abstracted as reusable component. |
+| SidebarNav / Sidebar | Done | Functional, collapsible (mobile toggle) with status. |
+| StatusBadge | Partial | Ingestion Active text only; needs dedicated badge component abstraction. |
+| EntityCard | Partial | Card UI present with actions; scores & tags present but styling differs from dual ring spec. |
+| ScoreBadge | Missing | Scores rendered as plain numeric sections, not ring gradient component. |
+| TagChip | Partial | Tags appear as simple labels; interactive filter behavior absent. |
+| TheoryInput | Scaffold | Input & helper text present, lacks advanced threshold panel & submit logic. |
+| EvidenceColumn / EvidenceCard | Missing | Not built; empty state placeholder only. |
+| SimilarList | Partial | "Similar Items" concept appears only in Search right panel; not tied to detail view logic. |
+| ClusterFacet | Missing | Cluster dropdown placeholder only, no counts. |
+| PaginationBar | Missing | Not implemented; static list. |
+| LoadingSkeleton | Partial | Some skeleton components exist (needs audit), but not consistently applied per latency rules. |
+| MetricTile | Partial | Tiles rendered, may need abstraction & accessibility roles. |
+| ToggleGroup (entity type) | Partial | Buttons present, need semantic radio-group behavior. |
+| ConfirmationModal | Missing | No modals for admin actions yet. |
+| ClusterMapCanvas / Toolbar | Placeholder | Toolbar partial; canvas w/ interactions absent. |
+| LassoLayer | Missing | Not started. |
+| MapTooltip | Missing | Not started. |
+| DensityLegend | Missing | Not started. |
+| MiniMap | Missing | Not started. |
+| ModelSelectorTable | Missing | Not started. |
+| ModelSelectModal / DimensionWarning / CostBadge | Missing | Not started. |
+| AuditLogList | Missing | Not started. |
+
+## Priority Gap Remediation Plan (Recommended Order)
+1. Implement Item Detail route (unblocks multiple stories: similar items, score rationale, tag navigation).
+2. Integrate React Query + API client scaffolding (search, item detail, theory analyze, url analyze, status endpoints).
+3. Theory evidence pipeline UI (support/contradict columns & cards) with placeholder mocked fetch layer.
+4. Cluster Map MVP (static point canvas + zoom/pan) before advanced lasso & density layers.
+5. Model Configuration panel (LLM & Embeddings) with mock data and selection flows (cost + dimension warnings).
+6. Accessibility & keyboard navigation pass (focus order, ARIA labels, shortcuts bindings).
+7. Performance instrumentation (measure hydration, search render times) once real queries exist.
+8. Enhancement of ScoreBadge + standardized TagChip & MetricTile components.
+
+## Frontend Tracking Metadata
+- Assessment Date: 2025-09-22
+- Assessed By: Automated review agent (POC instrumentation via Playwright DOM snapshots)
+- Next Update Target: After Item Detail + React Query integration.
+
+---
+
 Version: v0.1 (Draft)  
 Derived From: `prd.md` v0.1  
 Design Mode: Dark-first, minimalist research console; emphasize information density without clutter.
