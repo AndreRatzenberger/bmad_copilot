@@ -14,10 +14,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install deps
+      - name: Install deps (pyproject)
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # Install project with test extras defined in pyproject.toml
+          pip install .[test]
       - name: Tests
         run: pytest -q
   frontend:

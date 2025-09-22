@@ -40,11 +40,27 @@ Edit `.env` and set at minimum:
 ADMIN_API_KEY=replace-with-secure-admin-key
 ```
 
-Run API via uv (isolated environment):
+Install project (base deps):
 ```powershell
-uv run uvicorn backend.main:app --reload
+uv sync
 ```
-Health endpoint: http://localhost:8000/health
+
+Run API via console script (default port 8000):
+```powershell
+uv run mvp-backend
+```
+
+Dev mode (auto-reload):
+```powershell
+uv run dev-backend
+```
+
+Override port/host:
+```powershell
+$env:PORT=8010; uv run mvp-backend
+```
+
+Health endpoint: http://localhost:8000/health (or chosen port)
 
 ### 2. Frontend
 
@@ -58,6 +74,17 @@ Open http://localhost:5173
 
 ### 3. Tests
 
+Install test extras (one time):
+```powershell
+uv sync --extra test
+```
+
+Run tests (helper script):
+```powershell
+uv run tests -q
+```
+
+You can still invoke directly:
 ```powershell
 uv run pytest -q
 ```
@@ -96,8 +123,18 @@ Heavy ML dependencies are optional under the `ml` extra in `pyproject.toml` and 
 ---
 Review the added artifacts and provide feedback on any adjustments before we proceed to feature implementation.
 
+### Helper Scripts Summary
+| Command | Purpose |
+|---------|---------|
+| `uv run mvp-backend` | Start server (production-style) |
+| `uv run dev-backend` | Start with reload enabled |
+| `uv run tests` | Run pytest suite |
+
+Set `RELOAD=1` manually for custom variants; set `NO_SERVER=1` to suppress server start when importing `backend.main.run` in tooling contexts.
+
 ### Why uv?
 * Fast, parallel resolver & installer
 * Native extras support (e.g., `uv sync --extra ml --extra test`)
 * Simplifies reproducibility without maintaining a separate requirements file
+* Console script discovery seamlessly wired via `[project.scripts]`
 

@@ -20,6 +20,9 @@ dependencies = [
 [project.scripts]
 # Launch the FastAPI application (usage: uv run mvp-backend)
 mvp-backend = "backend.main:run"
+dev-backend = "backend.scripts:run_dev"          # uv run dev-backend (reload on by default)
+tests = "backend.scripts:run_tests"              # uv run tests (requires --extra test installed)
+run-tests = "backend.scripts:run_tests"          # alias
 
 [project.optional-dependencies]
 ml = [
