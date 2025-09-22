@@ -132,6 +132,23 @@ Review the added artifacts and provide feedback on any adjustments before we pro
 
 Set `RELOAD=1` manually for custom variants; set `NO_SERVER=1` to suppress server start when importing `backend.main.run` in tooling contexts.
 
+### Legacy Requirements Files Removal
+The previous `requirements.txt` and `requirements-ml.txt` have been removed. All dependencies (including optional ML and test groups) are now declared exclusively in `pyproject.toml` under:
+
+```
+[project.dependencies]
+[project.optional-dependencies]
+```
+
+Install patterns:
+```
+uv sync                # base
+uv sync --extra test   # add test deps
+uv sync --extra ml     # add ML stack
+```
+
+CI has been migrated to use `uv sync` for backend dependency resolution.
+
 ### Why uv?
 * Fast, parallel resolver & installer
 * Native extras support (e.g., `uv sync --extra ml --extra test`)
